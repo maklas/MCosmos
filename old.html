@@ -68,18 +68,22 @@
             </tbody>
         </table>
     </div>
-
+</div>
 <script>
-
-    const GRAVITATIONAL_CONSTANT = 6.67408e-11;
     const C = 299_792_458;
     const C2 = C * C;
+    const GRAVITATIONAL_CONSTANT = 6.67430e-11;
+    const PLANKS_CONSTANT = 6.62607004e-34;
+    const PI = Math.PI;
+    const au = 1.495978707e11
 
+
+    let timePassed = 0;
     let timeScale = 60 * 60 * 24 * 1; //1 day per second
     let steps = 50; //steps per frame
     const trackLength = 3000;
     let trackFrame = 5;
-    const asteroids = 100;
+    const asteroids = 0;
     let frame = 0;
     let canvas;
     let ctx;
@@ -97,6 +101,7 @@
     const COLOR_ROCK = 'rgb(61,56,56)';
     const COLOR_CENTER = 'rgba(255, 0, 0)';
     const COLOR_TRACK = 'rgb(52,91,149)';
+    const COLOR_PREDICTION = 'rgba(200,0,255,0.5)';
     const COLOR_NAMES = 'rgb(40,34,34)';
     // Mass in kilograms, distance in meters, velocity in m/s (ISU)
     let sun = {name: 'Sun', type: TYPE_STAR, mass: 1.989e30, radius: 696340000, x: 500, y: 0, vx: 0, vy: 0, track: []};
@@ -130,7 +135,7 @@
     //Инициализация
     function init() {
         canvas = document.getElementById(`canvas`);
-    	ctx = canvas.getContext(`2d`, { alpha: false });
+        ctx = canvas.getContext(`2d`, { alpha: false });
         ctx.font = 'bold 18px serif';
 
         canvas.addEventListener('wheel', function(e) {
@@ -156,7 +161,9 @@
                 let pos = cam.toWorldPoint(launchStart.x, launchStart.y);
                 let mass = Math.max(+createBodyMass.value || 100, 1);
                 let radius = Math.sqrt(mass / Math.PI) / 216410; //earth density
-                addBody({name: null, type: TYPE_MOON, mass: mass, radius: radius, x: pos.x, y: pos.y, vx: vel.x, vy: vel.y, track: []});
+                let body = {name: null, type: TYPE_MOON, mass: mass, radius: radius, x: pos.x, y: pos.y, vx: vel.x, vy: vel.y, track: []};
+                addBody(body);
+                target = body;
             }
             launchMode = false;
             launchRelBody = null;
@@ -214,20 +221,42 @@
             if (document.activeElement && document.activeElement.tagName.toUpperCase() === 'INPUT') {
                 return;
             }
-            if(e.key === 'p' || e.key === 'з') {
+            let key = e.key.toLowerCase();
+            if(key === 'p' || key === 'з') {
                 changeSimulate(!simulate);
             }
-            if(e.key === 'g' || e.key === 'п') {
+            if(key === 'g' || key === 'п') {
                 changeGField(!drawGravity);
             }
-            if(e.key === 't' || e.key === 'е') {
+            if(key === 't' || key === 'е') {
                 changeTrack(!drawTracks);
             }
-            if (e.key > '0' && e.key < '9') {
-                onNumberPressed(e.key);
+            if (key > '0' && key < '9') {
+                onNumberPressed(key);
             }
             if (e.key === 'Delete' && target) {
                 removeBody(target);
+            }
+            if (e.key === 'ArrowLeft') {
+                if (target) {
+                    let i = bodies.indexOf(target) - 1;
+                    if (i < 0) {
+                        i = bodies.length - 1;
+                    }
+                    target = bodies.length === 0 ? null : bodies[i];
+                } else if (bodies.length > 0) {
+                    target = bodies[0];
+                }
+            } else if (e.key === 'ArrowRight') {
+                if (target) {
+                    let i = bodies.indexOf(target) + 1;
+                    if (i >= bodies.length) {
+                        i = 0;
+                    }
+                    target = bodies.length === 0 ? null : bodies[i];
+                } else if (bodies.length > 0) {
+                    target = bodies[bodies.length - 1];
+                }
             }
             pressedButtons[e.key] = true;
         })
@@ -341,11 +370,12 @@
             if (frame % trackFrame === 0) {
                 updateTracks();
             }
+            timePassed += dt;
         }
         updateCamera();
         render();
 
-    	window.requestAnimationFrame(animationFrame);
+        window.requestAnimationFrame(animationFrame);
         let frameEndTime = window.performance.now();
         fTimeHistory.push(frameEndTime - frameStartTime);
         if (fTimeHistory.length > 60) {
@@ -361,7 +391,7 @@
 
     /* since can't allow too small step size */
     function getActualNumberOfSteps() {
-        const minStepSize = 1.0/100_000;
+        const minStepSize = 1.0/1_000_000;
         const desiredStepSize = ((1 / avgFps) * timeScale) / steps;
         if (desiredStepSize > minStepSize) {
             return steps;
@@ -372,27 +402,23 @@
     }
 
     function processInput() {
+        let scale = 1.015;
+        if (pressedButtons['Shift']) {
+            scale += 0.02;
+        }
         if (pressedButtons['ArrowUp']) {
-            timeScale *= 1.01;
+            timeScale *= scale;
         } else if (pressedButtons['ArrowDown']) {
-            timeScale /= 1.01;
-        } else if (pressedButtons['ArrowLeft'] && target) {
-            let i = bodies.indexOf(target) - 1;
-            if (i < 0) {
-                i = bodies.length - 1;
-            }
-            target = bodies.length === 0 ? null : bodies[i];
-        } else if (pressedButtons['ArrowRight'] && target) {
-            let i = bodies.indexOf(target) + 1;
-            if (i >= bodies.length) {
-                i = 0;
-            }
-            target = bodies.length === 0 ? null : bodies[i];
+            timeScale /= scale;
         }
     }
 
     function updateGravitation(dt) {
         let len = bodies.length;
+        for (const body of bodies) {
+            body.dvx = 0;
+            body.dvy = 0;
+        }
         for (let i = 0; i < len; i++) {
             const a = bodies[i];
             for (let j = i + 1; j < len; j++) {
@@ -405,12 +431,19 @@
     // update body positions based on it's velocity
     function updateBodies(dt) {
         for (const body of bodies) {
-            if (len2(body.vx, body.vy) > C2) {
+            let lorentz = lorentzFactor(len(body.vx, body.vy));
+            let aX = body.dvx / lorentz;
+            let aY = body.dvy / lorentz;
+            body.vx += aX;
+            body.vy += aY;
+
+            if (len2(body.vx, body.vy) >= C2) {
                 let v = {x: body.vx, y: body.vy};
-                setLen(v, C);
+                setLen(v, C - 0.01);
                 body.vx = v.x;
                 body.vy = v.y;
             }
+
             body.x += body.vx * dt;
             body.y += body.vy * dt;
         }
@@ -477,7 +510,11 @@
     function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height); //clear canvas
         if (drawTracks) {
-            drawTrackLines();
+            if (target && target.track && false) {
+                drawRelativeTrackLines(target);
+            } else {
+                drawTrackLines();
+            }
         }
         drawBodies();
         if (target) {
@@ -517,7 +554,8 @@
         let stepThrottle = actualSteps < steps? ' | ' + actualSteps : '';
         ctx.fillStyle = COLOR_BLACK
         ctx.fillText('FPS: ' + avgFps.toFixed(0) + ' / ' + ((avgFps / (1.0 / avgFrameTime)) * 100).toFixed(1) + ' %', x, y += dy);
-        ctx.fillText('Time: ' + secToShortString(timeScale) + '/sec', x, y += dy);
+        ctx.fillText('Time: ' + secToShortString(timePassed), x, y += dy);
+        ctx.fillText('Time scale: ' + secToShortString(timeScale) + '/sec', x, y += dy);
         ctx.fillText('Step: ' + secToShortString(step) + stepThrottle, x, y += dy);
         ctx.fillText('Zoom: ' + numberToString(cam.zoom), x, y += dy);
         if (!simulate) {
@@ -557,9 +595,13 @@
             return (sec / 60).toFixed(0) + ' min';
         } else if (sec < 3 * 60 * 60 * 24) {
             return (sec / (60 * 60)).toFixed(1) + ' hrs';
-        } else if (sec < 3 * 60 * 60 * 24 * 30) {
+        } else if (sec < 3 * 60 * 60 * 24 * 30.44) {
             return (sec / (60 * 60 * 24)).toFixed(1) + ' days';
-        } else return (sec / (60 * 60 * 24 * 30)).toFixed(1) + ' months';
+        } else if (sec < 3 * 60 * 60 * 24 * 365) {
+            return (sec / (60 * 60 * 24 * 30.44)).toFixed(1) + ' months';
+        } else {
+            return (sec / (60 * 60 * 24 * 365.24)).toFixed(1) + ' years';
+        }
     }
 
     function numberToString(n) {
@@ -596,22 +638,22 @@
     function drawBodies() {
         ctx.lineWidth = 2;
         ctx.strokeStyle = COLOR_BLACK;
-    	for (const body of bodies) {
-    	    switch (body.type) {
-    	        case TYPE_BLACK_HOLE: ctx.fillStyle = COLOR_BLACK; break;
-    	        case TYPE_STAR: ctx.fillStyle = COLOR_STAR; break;
-    	        case TYPE_PLANET: ctx.fillStyle = COLOR_PLANET; break;
-    	        case TYPE_MOON: ctx.fillStyle = COLOR_MOON; break;
-    	        case TYPE_ROCK: ctx.fillStyle = COLOR_ROCK; break;
-    	        default: ctx.fillStyle = COLOR_BLACK; break;
+        for (const body of bodies) {
+            switch (body.type) {
+                case TYPE_BLACK_HOLE: ctx.fillStyle = COLOR_BLACK; break;
+                case TYPE_STAR: ctx.fillStyle = COLOR_STAR; break;
+                case TYPE_PLANET: ctx.fillStyle = COLOR_PLANET; break;
+                case TYPE_MOON: ctx.fillStyle = COLOR_MOON; break;
+                case TYPE_ROCK: ctx.fillStyle = COLOR_ROCK; break;
+                default: ctx.fillStyle = COLOR_BLACK; break;
             }
             let posX = cam.toCamPointX(body.x);
             let posY = cam.toCamPointY(body.y);
             ctx.beginPath();
             ctx.arc(posX, posY, getBodyRenderWidth(body), 0, Math.PI * 2, false);
             ctx.fill();
-    		ctx.stroke();
-    	}
+            ctx.stroke();
+        }
     }
 
     function getBodyRenderWidth(body) {
@@ -646,6 +688,31 @@
             ctx.strokeStyle = 'rgb(128,21,21)';
             let from = cam.toCamPoint(launchRelBody.x, launchRelBody.y);
             drawArrow(from, launchStart, 7);
+
+            //drawing prediction
+            if (lastMousePos.x !== launchStart.x || lastMousePos.y !== launchStart.y) {
+                let predictionTime = 120; //seconds
+                let predictionStep = 1/30; //step
+
+                ctx.strokeStyle = COLOR_PREDICTION;
+                ctx.beginPath();
+                ctx.moveTo(from.x, from.y);
+
+                let startPosition = cam.toWorldPointV(launchStart);
+                let vel = getLaunchVelocity(launchStart, lastMousePos);
+                let tempBody = {x: startPosition.x, y: startPosition.y, vx: vel.x, vy: vel.y, mass: 1};
+                for (let t = 0; t < predictionTime; t+= predictionStep) {
+                    let pdt = predictionStep * timeScale; //actual step time to use
+                    let fv = getGravitationalForce(tempBody, launchRelBody);
+
+                    tempBody.vx += fv.x * pdt;
+                    tempBody.vy += fv.y * pdt;
+                    tempBody.x += tempBody.vx * pdt;
+                    tempBody.y += tempBody.vy * pdt;
+                    ctx.lineTo(cam.toCamPointX(tempBody.x), cam.toCamPointY(tempBody.y));
+                }
+                ctx.stroke();
+            }
         }
         ctx.strokeStyle = 'rgb(0, 0, 255)';
         drawArrow(launchStart, lastMousePos);
@@ -701,6 +768,32 @@
         ctx.stroke();
     }
 
+    function drawRelativeTrackLines(relativeBody) {
+        ctx.strokeStyle = COLOR_TRACK; //line color
+        ctx.lineWidth = 1; //width of lines
+
+        let relTrack = relativeBody.track;
+        if (!relTrack || relTrack.length === 0) return;
+
+        ctx.beginPath();
+        for (const body of bodies) {
+            let track = body.track;
+            let minLen = Math.min(relTrack.length)
+            for (let i = 0; i < minLen; i++) {
+                let movePos = cam.toCamPoint(track[0].x - relTrack[0].x + relativeBody.x, track[0].y - relTrack[0].y + relativeBody.y);
+
+                ctx.moveTo(movePos.x, movePos.y);
+                for (let i = 1; i < track.length; i++) {
+                    let point = track[i];
+                    let posX = cam.toCamPointX(point.x - relTrack[i].x + relativeBody.x);
+                    let posY = cam.toCamPointY(point.y - relTrack[i].y + relativeBody.y);
+                    ctx.lineTo(posX, posY);
+                }
+            }
+        }
+        ctx.stroke();
+    }
+
     function drawGravityField() {
         ctx.strokeStyle = 'rgb(200, 50, 50, 0.8)';
         ctx.lineWidth = 1;
@@ -749,16 +842,24 @@
 
     //Рассчитывает и применяет гравитацию двух тел
     function applyGravitation(a, b, dt) {
-    	let dist2 = len2(b.x - a.x, b.y - a.y);
-    	let dist = Math.sqrt(dist2);
+        let dist2 = len2(b.x - a.x, b.y - a.y);
+        let dist = Math.sqrt(dist2);
         let f = (GRAVITATIONAL_CONSTANT * a.mass * b.mass) / (dist2);
-        let px = ((b.x - a.x) / dist) * f * dt;
-        let py = ((b.y - a.y) / dist) * f * dt;
+        let fx = ((b.x - a.x) / dist) * f * dt;
+        let fy = ((b.y - a.y) / dist) * f * dt;
+        /*
+        a.vx += fx / a.mass;
+        a.vy += fy / a.mass;
+        b.vx -= fx / b.mass;
+        b.vy -= fy / b.mass;
+        */
 
-        a.vx += px / a.mass;
-        a.vy += py / a.mass;
-        b.vx -= px / b.mass;
-        b.vy -= py / b.mass;
+        //let lorA = lorentzFactor(len(a.vx, a.vy));
+        //let lorB = lorentzFactor(len(b.vx, b.vy));
+        a.dvx += fx / a.mass;
+        a.dvy += fy / a.mass;
+        b.dvx -= fx / b.mass;
+        b.dvy -= fy / b.mass;
     }
 
     // vector from body a to body b
@@ -802,7 +903,10 @@
         let cos = Math.cos(rad);
         let sin = Math.sin(rad);
 
-        return {x: x * cos - y * sin, y: x * sin + y * cos};
+        return {
+            x: x * cos - y * sin,
+            y: x * sin + y * cos
+        };
     }
 
     function onClick(x, y) {
@@ -823,11 +927,11 @@
         return {x: sumMX / M, y: sumMY / M};
     }
 
-    //uses screen coordinates
+    //uses screen coordinates. Does not count relative body
     function getLaunchVelocity(from, to) {
         let v = {x: (to.x - from.x) * cam.zoom / timeScale, y: (to.y - from.y) * cam.zoom / timeScale};
         if (len2(v.x, v.y) > C2) {
-            setLen(v, 0.95 * C);
+            setLen(v, 0.99 * C);
         }
         return v;
     }
@@ -838,7 +942,7 @@
         v.x += launchRelBody ? launchRelBody.vx : 0;
         v.y += launchRelBody ? launchRelBody.vy : 0;
         if (len2(v.x, v.y) > C2) {
-            setLen(v, 0.95 * C);
+            setLen(v, 0.99 * C);
         }
         return v;
     }
@@ -923,9 +1027,40 @@
         return Math.PI * r * r;
     }
 
+    function lorentzFactor(vel) {
+        return lorentzFactor2(vel * vel);
+    }
+
+    function lorentzFactor2(vel2) {
+        return vel2 >= C2 ? Infinity : 1 / Math.sqrt(1 - (vel2 / C2));
+    }
+
+    function getRelativisticMass(body) {
+        return lorentzFactor2(len2(body.vx, body.vy)) * body.mass;
+    }
+
+    function reverseImpulse(p, m) {
+        return (C * p) / Math.sqrt(C2 * m * m + p * p);
+    }
+
+    function vel(body) {
+        return len(body.vx, body.vy);
+    }
+
+    function dst(a, b) {
+        return len(b.x - a.x, b.y - a.y);
+    }
+
     init();
 
+
+    function random(start, end) {
+        return Math.random() * (end - start) + start;
+    }
+
+    function getCircleArea(r) {
+        return Math.PI * r * r;
+    }
 </script>
-</div>
 </body>
 </html>

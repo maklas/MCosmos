@@ -1,0 +1,9 @@
+1. Fix photons pathing around black hole (Space curvature calculation)
+2. Add Space curvature visualization
+3. Performance improvement, both in speed and memory allocation
+4. Improve launch trajectory prediction.
+    Gets too imprecise when close to high gravity object or not enough.
+    Think about including other bodies into prediction.
+    Think about predicting movement when launching without target.
+5. Improve control and/or UI
+6. Variable stepping - Mode during which steps are as low as possible speed, preserving ~60 fps
