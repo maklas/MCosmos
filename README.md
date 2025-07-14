@@ -3,6 +3,8 @@
 MCosmos is an interactive 2D space simulation platform. It visualizes planetary systems, allowing you to observe and experiment with gravitational interactions, launch new bodies, and explore orbital mechanics.
 
 It's my little pet project to learn some JS.
+
+Just launch index.html in your browser to play.
 ![Screenshot.png](Screenshot.png)
 ## Controls
 
