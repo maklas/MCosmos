@@ -266,6 +266,12 @@ function onNumberPressed(key) {
             pos.addXY(4 * cam.zoom, 0)
         }
     }
+    if (key === '4') {
+        let dir = new Vec(0, -1);
+        let pos = cam.toWorldPoint(engine.mouse.x, engine.mouse.y);
+        bodies.push(new Body('Super Massive Black Hole', Type.BLACK_HOLE, 1000 * sun.mass, 1, pos, new Vec(0, 0), false)); //green light
+        //pos.addXY(4 * cam.zoom, 0)
+    }
 }
 
 /* since can't allow too small step size */
